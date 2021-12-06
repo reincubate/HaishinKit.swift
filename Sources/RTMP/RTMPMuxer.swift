@@ -7,7 +7,7 @@ protocol RTMPMuxerDelegate: AnyObject {
 }
 
 // MARK: -
-final class RTMPMuxer {
+public final class RTMPMuxer {
     static let aac: UInt8 = FLVAudioCodec.aac.rawValue << 4 | FLVSoundRate.kHz44.rawValue << 2 | FLVSoundSize.snd16bit.rawValue << 1 | FLVSoundType.stereo.rawValue
 
     weak var delegate: RTMPMuxerDelegate?
@@ -20,11 +20,54 @@ final class RTMPMuxer {
         audioTimeStamp = CMTime.zero
         videoTimeStamp = CMTime.zero
     }
+
+	public func setVideoFormatDescription(_ formatDescription: CMFormatDescription?) {
+		guard
+			let formatDescription = formatDescription,
+			let avcC = AVCConfigurationRecord.getData(formatDescription) else {
+			return
+		}
+		var buffer = Data([FLVFrameType.key.rawValue << 4 | FLVVideoCodec.avc.rawValue, FLVAVCPacketType.seq.rawValue, 0, 0, 0])
+		buffer.append(avcC)
+		delegate?.sampleOutput(video: buffer, withTimestamp: 0, muxer: self)
+	}
+
+	private var startPTS: CMTime = .zero
+
+	public func sendVideoBuffer(_ sampleBuffer: CMSampleBuffer) {
+		let keyframe: Bool = !sampleBuffer.isNotSync
+		var compositionTime: Int32 = 0
+
+		if startPTS == .zero {
+			startPTS = sampleBuffer.presentationTimeStamp
+		}
+
+		let presentationTimeStamp: CMTime = sampleBuffer.presentationTimeStamp - startPTS
+
+		var decodeTimeStamp: CMTime = sampleBuffer.decodeTimeStamp
+		if decodeTimeStamp == CMTime.invalid {
+			decodeTimeStamp = presentationTimeStamp
+		} else {
+			compositionTime = Int32((presentationTimeStamp.seconds - decodeTimeStamp.seconds) * 1000)
+		}
+		let delta: Double = (videoTimeStamp == CMTime.zero ? 0 : decodeTimeStamp.seconds - videoTimeStamp.seconds) * 1000
+		guard let data = sampleBuffer.dataBuffer?.data, 0 <= delta else {
+			return
+		}
+		var buffer = Data([((keyframe ? FLVFrameType.key.rawValue : FLVFrameType.inter.rawValue) << 4) | FLVVideoCodec.avc.rawValue, FLVAVCPacketType.nal.rawValue])
+		buffer.append(contentsOf: compositionTime.bigEndian.data[1..<4])
+		buffer.append(data)
+		delegate?.sampleOutput(video: buffer, withTimestamp: delta, muxer: self)
+		if delegate != nil {
+//			print("-----------> sent video buffer with delta \(delta)")
+		}
+		videoTimeStamp = decodeTimeStamp
+	}
 }
 
 extension RTMPMuxer: AudioCodecDelegate {
     // MARK: AudioCodecDelegate
-    func audioCodec(_ codec: AudioCodec, didSet formatDescription: CMFormatDescription?) {
+	public func audioCodec(_ codec: AudioCodec, didSet formatDescription: CMFormatDescription?) {
         guard let formatDescription = formatDescription else {
             return
         }
@@ -33,7 +76,7 @@ extension RTMPMuxer: AudioCodecDelegate {
         delegate?.sampleOutput(audio: buffer, withTimestamp: 0, muxer: self)
     }
 
-    func audioCodec(_ codec: AudioCodec, didOutput sample: UnsafeMutableAudioBufferListPointer, presentationTimeStamp: CMTime) {
+	public func audioCodec(_ codec: AudioCodec, didOutput sample: UnsafeMutableAudioBufferListPointer, presentationTimeStamp: CMTime) {
         let delta: Double = (audioTimeStamp == CMTime.zero ? 0 : presentationTimeStamp.seconds - audioTimeStamp.seconds) * 1000
         guard let bytes = sample[0].mData, 0 < sample[0].mDataByteSize && 0 <= delta else {
             return
@@ -47,7 +90,7 @@ extension RTMPMuxer: AudioCodecDelegate {
 
 extension RTMPMuxer: VideoCodecDelegate {
     // MARK: VideoCodecDelegate
-    func videoCodec(_ codec: VideoCodec, didSet formatDescription: CMFormatDescription?) {
+	public func videoCodec(_ codec: VideoCodec, didSet formatDescription: CMFormatDescription?) {
         guard
             let formatDescription = formatDescription,
             let avcC = AVCConfigurationRecord.getData(formatDescription) else {
@@ -58,7 +101,7 @@ extension RTMPMuxer: VideoCodecDelegate {
         delegate?.sampleOutput(video: buffer, withTimestamp: 0, muxer: self)
     }
 
-    func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
+	public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
         let keyframe: Bool = !sampleBuffer.isNotSync
         var compositionTime: Int32 = 0
         let presentationTimeStamp: CMTime = sampleBuffer.presentationTimeStamp

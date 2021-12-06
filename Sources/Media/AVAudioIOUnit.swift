@@ -4,7 +4,7 @@ import AVFoundation
 import SwiftPMSupport
 #endif
 
-final class AVAudioIOUnit: NSObject, AVIOUnit {
+public final class AVAudioIOUnit: NSObject, AVIOUnit {
     lazy var codec: AudioCodec = {
         var codec = AudioCodec()
         codec.lockQueue = lockQueue
@@ -65,7 +65,7 @@ final class AVAudioIOUnit: NSObject, AVIOUnit {
     }
 #endif
 
-    func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+	public func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         mixer?.recorder.appendSampleBuffer(sampleBuffer, mediaType: .audio)
         codec.encodeSampleBuffer(sampleBuffer)
     }
@@ -127,14 +127,14 @@ final class AVAudioIOUnit: NSObject, AVIOUnit {
 
 extension AVAudioIOUnit: AVCaptureAudioDataOutputSampleBufferDelegate {
     // MARK: AVCaptureAudioDataOutputSampleBufferDelegate
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+	public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         appendSampleBuffer(sampleBuffer)
     }
 }
 
 extension AVAudioIOUnit: AudioCodecDelegate {
     // MARK: AudioConverterDelegate
-    func audioCodec(_ codec: AudioCodec, didSet formatDescription: CMFormatDescription?) {
+	public func audioCodec(_ codec: AudioCodec, didSet formatDescription: CMFormatDescription?) {
         guard let formatDescription = formatDescription, let audioEngine = audioEngine else {
             return
         }
@@ -164,7 +164,7 @@ extension AVAudioIOUnit: AudioCodecDelegate {
         }
     }
 
-    func audioCodec(_ codec: AudioCodec, didOutput sample: UnsafeMutableAudioBufferListPointer, presentationTimeStamp: CMTime) {
+	public func audioCodec(_ codec: AudioCodec, didOutput sample: UnsafeMutableAudioBufferListPointer, presentationTimeStamp: CMTime) {
         guard !sample.isEmpty, sample[0].mDataByteSize != 0 else {
             return
         }

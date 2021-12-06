@@ -278,7 +278,7 @@ open class RTMPStream: NetStream {
     }
     var audioTimestamp: Double = 0.0
     var videoTimestamp: Double = 0.0
-    private let muxer = RTMPMuxer()
+    public let muxer = RTMPMuxer()
     private var messages: [RTMPCommandMessage] = []
     private var frameCount: UInt16 = 0
     private var dispatcher: IEventDispatcher!
