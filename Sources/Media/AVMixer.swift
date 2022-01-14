@@ -118,6 +118,15 @@ public class AVMixer {
     #endif
     /// The recorder instance.
     public lazy var recorder = AVRecorder()
+    
+    public var videoBitrate: UInt32 {
+        get {
+            videoIO.encoder.bitrate
+        }
+        set {
+            videoIO.encoder.bitrate = newValue
+        }
+    }
 
     var settings: Setting<AVMixer, Option> = [:] {
         didSet {

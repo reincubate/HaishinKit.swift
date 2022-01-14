@@ -1,7 +1,7 @@
 import AVFoundation
 import CoreImage
 
-final class AVVideoIOUnit: NSObject, AVIOUnit {
+final public class AVVideoIOUnit: NSObject, AVIOUnit {
     static let defaultAttributes: [NSString: NSObject] = [
         kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
         kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue
@@ -32,7 +32,7 @@ final class AVVideoIOUnit: NSObject, AVIOUnit {
             decoder.formatDescription = formatDescription
         }
     }
-    lazy var encoder: VideoCodec = {
+    public lazy var encoder: VideoCodec = {
         var encoder = VideoCodec()
         encoder.lockQueue = lockQueue
         return encoder
@@ -384,7 +384,7 @@ final class AVVideoIOUnit: NSObject, AVIOUnit {
     }
 }
 
-extension AVVideoIOUnit {
+public extension AVVideoIOUnit {
     func encodeSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         guard let buffer: CVImageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
@@ -442,7 +442,7 @@ extension AVVideoIOUnit {
 
 extension AVVideoIOUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
     // MARK: AVCaptureVideoDataOutputSampleBufferDelegate
-    func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    public func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         #if os(macOS)
         if connection.isVideoMirrored {
             sampleBuffer.reflectHorizontal()
