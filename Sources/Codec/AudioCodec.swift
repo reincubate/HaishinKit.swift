@@ -35,8 +35,8 @@ public class AudioCodec {
         }
     }
 
-    public static let minimumBitrate: UInt32 = 8 * 1000
-    public static let defaultBitrate: UInt32 = 32 * 1000
+    public static let minimumBitrate: UInt32 = 96 * 1000
+    public static let defaultBitrate: UInt32 = 128 * 1000
     /// 0 means according to a input source
     public static let defaultChannels: UInt32 = 0
     /// 0 means according to a input source
