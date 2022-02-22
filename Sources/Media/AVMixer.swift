@@ -128,6 +128,10 @@ public class AVMixer {
         }
     }
 
+    public var audioBitrate: UInt32 {
+        audioIO.codec.actualBitrate
+    }
+
     var settings: Setting<AVMixer, Option> = [:] {
         didSet {
             settings.observer = self
