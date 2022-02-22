@@ -67,7 +67,7 @@ public class AudioCodec {
         }
     }
     var sampleRate: Double = AudioCodec.defaultSampleRate
-    public var actualBitrate: UInt32 = AudioCodec.defaultBitrate {
+    var actualBitrate: UInt32 = AudioCodec.defaultBitrate {
         didSet {
             logger.info(actualBitrate)
         }
