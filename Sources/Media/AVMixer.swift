@@ -1,14 +1,10 @@
 import AVFoundation
 
 #if os(iOS) || os(macOS)
-    extension AVCaptureSession.Preset {
-        static var `default`: AVCaptureSession.Preset = .medium
-    }
-#endif
-
-protocol AVIOUnit {
-    var mixer: AVMixer? { get set }
+extension AVCaptureSession.Preset {
+    static var `default`: AVCaptureSession.Preset = .medium
 }
+#endif
 
 protocol AVMixerDelegate: AnyObject {
     func mixer(_ mixer: AVMixer, didOutput audio: AVAudioPCMBuffer, presentationTimeStamp: CMTime)
@@ -17,20 +13,30 @@ protocol AVMixerDelegate: AnyObject {
 
 /// An object that mixies audio and video for streaming.
 public class AVMixer {
+    /// The default fps for an AVMixer, value is 30.
     public static let defaultFPS: Float64 = 30
+    /// The default videoSettings for an AVMixer.
     public static let defaultVideoSettings: [NSString: AnyObject] = [
         kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_32BGRA)
     ]
 
     #if os(iOS) || os(macOS)
+    /// The AVCaptureSession options.
     public enum Option: String, KeyPathRepresentable, CaseIterable {
+        /// Specifies the fps.
         case fps
+        /// Specifie the sessionPreset.
         case sessionPreset
+        /// Specifies the video is mirrored.
         case isVideoMirrored
+        /// Specifies the audofocus mode continuous.
         case continuousAutofocus
+        /// Specifies the exposure mode  continuous.
         case continuousExposure
 
         #if os(iOS)
+        /// Specifies the video stabilization mode
+        /// -seealso: https://github.com/shogo4405/HaishinKit.swift/discussions/1012
         case preferredVideoStabilizationMode
         #endif
 
@@ -54,6 +60,7 @@ public class AVMixer {
         }
     }
     #else
+    /// The AVCaptureSession options. This is a stub.
     public struct Option: KeyPathRepresentable {
         public static var allCases: [AVMixer.Option] = []
         public var keyPath: AnyKeyPath
@@ -62,32 +69,57 @@ public class AVMixer {
     }
     #endif
 
+    enum MediaSync {
+        case video
+        case passthrough
+    }
+
     #if os(iOS)
     var preferredVideoStabilizationMode: AVCaptureVideoStabilizationMode {
-        get { videoIO.preferredVideoStabilizationMode }
-        set { videoIO.preferredVideoStabilizationMode = newValue }
+        get {
+            videoIO.preferredVideoStabilizationMode
+        }
+        set {
+            videoIO.preferredVideoStabilizationMode = newValue
+        }
     }
     #endif
 
     #if os(iOS) || os(macOS)
     var fps: Float64 {
-        get { videoIO.fps }
-        set { videoIO.fps = newValue }
+        get {
+            videoIO.fps
+        }
+        set {
+            videoIO.fps = newValue
+        }
     }
 
     var isVideoMirrored: Bool {
-        get { videoIO.isVideoMirrored }
-        set { videoIO.isVideoMirrored = newValue }
+        get {
+            videoIO.isVideoMirrored
+        }
+        set {
+            videoIO.isVideoMirrored = newValue
+        }
     }
 
     var continuousExposure: Bool {
-        get { videoIO.continuousExposure }
-        set { videoIO.continuousExposure = newValue }
+        get {
+            videoIO.continuousExposure
+        }
+        set {
+            videoIO.continuousExposure = newValue
+        }
     }
 
     var continuousAutofocus: Bool {
-        get { videoIO.continuousAutofocus }
-        set { videoIO.continuousAutofocus = newValue }
+        get {
+            videoIO.continuousAutofocus
+        }
+        set {
+            videoIO.continuousAutofocus = newValue
+        }
     }
 
     var sessionPreset: AVCaptureSession.Preset = .default {
@@ -121,16 +153,28 @@ public class AVMixer {
     
     public var videoBitrate: UInt32 {
         get {
-            videoIO.encoder.bitrate
+			videoIO.codec.bitrate
         }
         set {
-            videoIO.encoder.bitrate = newValue
+			videoIO.codec.bitrate = newValue
         }
     }
 
     public var audioBitrate: UInt32 {
         audioIO.codec.actualBitrate
     }
+
+    /// Specifies the drawable object.
+    public weak var drawable: NetStreamDrawable? {
+        get {
+            videoIO.drawable
+        }
+        set {
+            videoIO.drawable = newValue
+        }
+    }
+
+    var mediaSync = MediaSync.passthrough
 
     var settings: Setting<AVMixer, Option> = [:] {
         didSet {
@@ -158,42 +202,63 @@ public class AVMixer {
         return mediaLink
     }()
 
+    private var audioTimeStamp = CMTime.zero
+    private var videoTimeStamp = CMTime.zero
+
+    /// Create a AVMixer instance.
     public init() {
         settings.observer = self
     }
 
-#if os(iOS) || os(macOS)
+    func useSampleBuffer(sampleBuffer: CMSampleBuffer, mediaType: AVMediaType) -> Bool {
+        switch mediaSync {
+        case .video:
+            if mediaType == .audio {
+                return !videoTimeStamp.seconds.isZero && videoTimeStamp.seconds <= sampleBuffer.presentationTimeStamp.seconds
+            }
+            if videoTimeStamp == CMTime.zero {
+                videoTimeStamp = sampleBuffer.presentationTimeStamp
+            }
+            return true
+        default:
+            return true
+        }
+    }
+
+    #if os(iOS) || os(macOS)
     deinit {
         if let session = _session, session.isRunning {
             session.stopRunning()
         }
     }
-#endif
+    #endif
 }
 
-extension AVMixer {
-    public func startEncoding(delegate: Any) {
-        videoIO.encoder.delegate = delegate as? VideoCodecDelegate
-        videoIO.encoder.startRunning()
-        audioIO.codec.delegate = delegate as? AudioCodecDelegate
-        audioIO.codec.startRunning()
+extension AVMixer: AVIOUnitEncoding {
+    /// Starts encoding for video and audio data.
+    public func startEncoding(_ delegate: AVCodecDelegate) {
+        videoIO.startEncoding(delegate)
+        audioIO.startEncoding(delegate)
     }
 
+    /// Stop encoding.
     public func stopEncoding() {
-        videoIO.encoder.delegate = nil
-        videoIO.encoder.stopRunning()
-        audioIO.codec.delegate = nil
-        audioIO.codec.stopRunning()
+        videoTimeStamp = CMTime.zero
+        audioTimeStamp = CMTime.zero
+        videoIO.stopEncoding()
+        audioIO.stopEncoding()
     }
 }
 
-extension AVMixer {
-    public func startDecoding(_ audioEngine: AVAudioEngine?) {
+extension AVMixer: AVIOUnitDecoding {
+    /// Starts decoding for video and audio data.
+    public func startDecoding(_ audioEngine: AVAudioEngine) {
         mediaLink.startRunning()
         audioIO.startDecoding(audioEngine)
-        videoIO.startDecoding()
+        videoIO.startDecoding(audioEngine)
     }
 
+    /// Stop decoding.
     public func stopDecoding() {
         mediaLink.stopRunning()
         audioIO.stopDecoding()
@@ -204,7 +269,7 @@ extension AVMixer {
 extension AVMixer: MediaLinkDelegate {
     // MARK: MediaLinkDelegate
     func mediaLink(_ mediaLink: MediaLink, dequeue sampleBuffer: CMSampleBuffer) {
-        _ = videoIO.decoder.decodeSampleBuffer(sampleBuffer)
+        videoIO.codec.inputBuffer(sampleBuffer)
     }
 
     func mediaLink(_ mediaLink: MediaLink, didBufferingChanged: Bool) {

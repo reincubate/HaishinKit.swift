@@ -18,29 +18,25 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
     }
 
     #if os(iOS) || os(macOS)
-    weak var renderer: NetStreamRenderer? {
+    weak var drawable: NetStreamDrawable? {
         didSet {
-            renderer?.orientation = orientation
+            drawable?.orientation = orientation
         }
     }
     #else
-    weak var renderer: NetStreamRenderer?
+    weak var drawable: NetStreamDrawable?
     #endif
 
     var formatDescription: CMVideoFormatDescription? {
         didSet {
-            decoder.formatDescription = formatDescription
+            codec.formatDescription = formatDescription
         }
     }
-    public lazy var encoder: VideoCodec = {
-        var encoder = VideoCodec()
-        encoder.lockQueue = lockQueue
-        return encoder
-    }()
-    lazy var decoder: H264Decoder = {
-        var decoder = H264Decoder()
-        decoder.delegate = self
-        return decoder
+
+	public lazy var codec: VideoCodec = {
+        var codec = VideoCodec()
+        codec.lockQueue = lockQueue
+        return codec
     }()
     weak var mixer: AVMixer?
 
@@ -83,11 +79,11 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
             guard
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let data = device.actualFPS(fps) else {
-                    return
+                return
             }
 
             fps = data.fps
-            encoder.expectedFPS = data.fps
+            codec.expectedFrameRate = data.fps
             logger.info("\(data)")
 
             do {
@@ -122,7 +118,7 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
 
     var orientation: AVCaptureVideoOrientation = .portrait {
         didSet {
-            renderer?.orientation = orientation
+            drawable?.orientation = orientation
             guard orientation != oldValue else {
                 return
             }
@@ -154,9 +150,9 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
             }
             let focusMode: AVCaptureDevice.FocusMode = continuousAutofocus ? .continuousAutoFocus : .autoFocus
             guard let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
-                device.isFocusModeSupported(focusMode) else {
-                    logger.warn("focusMode(\(focusMode.rawValue)) is not supported")
-                    return
+                  device.isFocusModeSupported(focusMode) else {
+                logger.warn("focusMode(\(focusMode.rawValue)) is not supported")
+                return
             }
             do {
                 try device.lockForConfiguration()
@@ -174,7 +170,7 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let point: CGPoint = focusPointOfInterest,
                 device.isFocusPointOfInterestSupported else {
-                    return
+                return
             }
             do {
                 try device.lockForConfiguration()
@@ -193,7 +189,7 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let point: CGPoint = exposurePointOfInterest,
                 device.isExposurePointOfInterestSupported else {
-                    return
+                return
             }
             do {
                 try device.lockForConfiguration()
@@ -213,9 +209,9 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
             }
             let exposureMode: AVCaptureDevice.ExposureMode = continuousExposure ? .continuousAutoExposure : .autoExpose
             guard let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
-                device.isExposureModeSupported(exposureMode) else {
-                    logger.warn("exposureMode(\(exposureMode.rawValue)) is not supported")
-                    return
+                  device.isExposureModeSupported(exposureMode) else {
+                logger.warn("exposureMode(\(exposureMode.rawValue)) is not supported")
+                return
             }
             do {
                 try device.lockForConfiguration()
@@ -292,10 +288,10 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
 
     deinit {
         if Thread.isMainThread {
-            self.renderer?.attachStream(nil)
+            self.drawable?.attachStream(nil)
         } else {
             DispatchQueue.main.sync {
-                self.renderer?.attachStream(nil)
+                self.drawable?.attachStream(nil)
             }
         }
         #if os(iOS) || os(macOS)
@@ -320,9 +316,12 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
 
         output = nil
         guard let camera: AVCaptureDevice = camera else {
+            mixer.mediaSync = .passthrough
             input = nil
             return
         }
+
+        mixer.mediaSync = .video
         #if os(iOS)
         screen = nil
         #endif
@@ -346,7 +345,7 @@ final public class AVVideoIOUnit: NSObject, AVIOUnit {
 
         fps *= 1
         position = camera.position
-        renderer?.position = camera.position
+        drawable?.position = camera.position
     }
 
     func setTorchMode(_ torchMode: AVCaptureDevice.TorchMode) {
@@ -400,7 +399,7 @@ public extension AVVideoIOUnit {
             }
         }
 
-        if renderer != nil || !effects.isEmpty {
+        if drawable != nil || !effects.isEmpty {
             let image: CIImage = effect(buffer, info: sampleBuffer)
             extent = image.extent
             if !effects.isEmpty {
@@ -416,10 +415,10 @@ public extension AVVideoIOUnit {
                 }
                 context?.render(image, to: imageBuffer ?? buffer)
             }
-            renderer?.enqueue(sampleBuffer)
+            drawable?.enqueue(sampleBuffer)
         }
 
-        encoder.encodeImageBuffer(
+        codec.inputBuffer(
             imageBuffer ?? buffer,
             presentationTimeStamp: sampleBuffer.presentationTimeStamp,
             duration: sampleBuffer.duration
@@ -429,20 +428,43 @@ public extension AVVideoIOUnit {
     }
 }
 
-extension AVVideoIOUnit {
-    func startDecoding() {
-        decoder.startRunning()
+extension AVVideoIOUnit: AVIOUnitEncoding {
+    func startEncoding(_ delegate: AVCodecDelegate) {
+        #if os(iOS)
+        screen?.startRunning()
+        #endif
+        codec.delegate = delegate
+        codec.startRunning()
+    }
+
+    func stopEncoding() {
+        #if os(iOS)
+        screen?.stopRunning()
+        #endif
+        codec.stopRunning()
+        codec.delegate = nil
+    }
+}
+
+extension AVVideoIOUnit: AVIOUnitDecoding {
+    func startDecoding(_ audioEndinge: AVAudioEngine) {
+        codec.delegate = self
+        codec.startRunning()
     }
 
     func stopDecoding() {
-        decoder.stopRunning()
-        renderer?.enqueue(nil)
+        codec.stopRunning()
+        drawable?.enqueue(nil)
     }
 }
 
 extension AVVideoIOUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
     // MARK: AVCaptureVideoDataOutputSampleBufferDelegate
-    public func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+
+	public func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard mixer?.useSampleBuffer(sampleBuffer: sampleBuffer, mediaType: AVMediaType.video) == true else {
+            return
+        }
         #if os(macOS)
         if connection.isVideoMirrored {
             sampleBuffer.reflectHorizontal()
@@ -452,9 +474,15 @@ extension AVVideoIOUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-extension AVVideoIOUnit: VideoDecoderDelegate {
-    // MARK: VideoDecoderDelegate
-    func sampleOutput(video sampleBuffer: CMSampleBuffer) {
-        renderer?.enqueue(sampleBuffer)
+extension AVVideoIOUnit: VideoCodecDelegate {
+    // MARK: VideoCodecDelegate
+	public func videoCodec(_ codec: VideoCodec, didSet formatDescription: CMFormatDescription?) {
+    }
+
+	public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
+        drawable?.enqueue(sampleBuffer)
+    }
+
+	public func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
     }
 }
