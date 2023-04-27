@@ -10,10 +10,14 @@ protocol MediaLinkDelegate: AnyObject {
 }
 
 final class MediaLink {
-    static let defaultBufferTime: Double = 0.2
+    private static let bufferTime = 0.2
+    private static let bufferingTime = 0.0
 
     var isPaused = false {
         didSet {
+            guard isPaused != oldValue else {
+                return
+            }
             choreographer.isPaused = isPaused
             nstry({
                 if self.isPaused {
@@ -27,11 +31,11 @@ final class MediaLink {
         }
     }
     var hasVideo = false
-    var bufferTime = MediaLink.defaultBufferTime
+    var bufferTime = MediaLink.bufferTime
     weak var delegate: MediaLinkDelegate?
-    lazy var playerNode = AVAudioPlayerNode()
+    private(set) lazy var playerNode = AVAudioPlayerNode()
     private(set) var isRunning: Atomic<Bool> = .init(false)
-    private var buffer: CircularBuffer<CMSampleBuffer> = .init(256)
+    private var buffer: RingBuffer<CMSampleBuffer> = .init(256)
     private var isBuffering = true {
         didSet {
             if !isBuffering {
@@ -41,20 +45,24 @@ final class MediaLink {
             delegate?.mediaLink(self, didBufferingChanged: isBuffering)
         }
     }
-    private var bufferingTime: Double = 0.0
+    private var bufferingTime = MediaLink.bufferingTime
     private lazy var choreographer: Choreographer = {
         var choreographer = DisplayLinkChoreographer()
         choreographer.delegate = self
         return choreographer
     }()
     private var scheduledAudioBuffers: Atomic<Int> = .init(0)
+    private var presentationTimeStampOrigin: CMTime = .invalid
     private let lockQueue = DispatchQueue(label: "com.haishinkit.HaishinKit.DisplayLinkedQueue.lock")
 
     func enqueueVideo(_ buffer: CMSampleBuffer) {
         guard buffer.presentationTimeStamp != .invalid else {
             return
         }
-        if buffer.presentationTimeStamp.seconds == 0.0 {
+        if presentationTimeStampOrigin == .invalid {
+            presentationTimeStampOrigin = buffer.presentationTimeStamp
+        }
+        if buffer.presentationTimeStamp == presentationTimeStampOrigin {
             delegate?.mediaLink(self, dequeue: buffer)
             return
         }
@@ -109,7 +117,7 @@ extension MediaLink: ChoreographerDelegate {
             guard let first = buffer.first else {
                 break
             }
-            if first.presentationTimeStamp.seconds <= duration {
+            if first.presentationTimeStamp.seconds - presentationTimeStampOrigin.seconds <= duration {
                 delegate?.mediaLink(self, dequeue: first)
                 frameCount += 1
                 buffer.removeFirst()
@@ -132,7 +140,8 @@ extension MediaLink: Running {
                 return
             }
             self.hasVideo = false
-            self.bufferingTime = Self.defaultBufferTime
+            self.bufferingTime = Self.bufferingTime
+            self.isBuffering = true
             self.choreographer.startRunning()
             self.isRunning.mutate { $0 = true }
         }
@@ -146,6 +155,7 @@ extension MediaLink: Running {
             self.choreographer.stopRunning()
             self.buffer.removeAll()
             self.scheduledAudioBuffers.mutate { $0 = 0 }
+            self.presentationTimeStampOrigin = .invalid
             self.isRunning.mutate { $0 = false }
         }
     }

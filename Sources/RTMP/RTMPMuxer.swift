@@ -4,7 +4,9 @@ protocol RTMPMuxerDelegate: AnyObject {
     func muxer(_ muxer: RTMPMuxer, didSetMetadata: ASObject)
     func muxer(_ muxer: RTMPMuxer, didOutputAudio buffer: Data, withTimestamp: Double)
     func muxer(_ muxer: RTMPMuxer, didOutputVideo buffer: Data, withTimestamp: Double)
+    func muxer(_ muxer: RTMPMuxer, audioCodecErrorOccurred error: AudioCodec.Error)
     func muxer(_ muxer: RTMPMuxer, videoCodecErrorOccurred error: VideoCodec.Error)
+    func muxerWillDropFrame(_ muxer: RTMPMuxer) -> Bool
 }
 
 // MARK: -
@@ -12,12 +14,10 @@ public final class RTMPMuxer {
     static let aac: UInt8 = FLVAudioCodec.aac.rawValue << 4 | FLVSoundRate.kHz44.rawValue << 2 | FLVSoundSize.snd16bit.rawValue << 1 | FLVSoundType.stereo.rawValue
 
     weak var delegate: RTMPMuxerDelegate?
-    private var configs: [Int: Data] = [:]
     private var audioTimeStamp = CMTime.zero
     private var videoTimeStamp = CMTime.zero
 
     func dispose() {
-        configs.removeAll()
         audioTimeStamp = CMTime.zero
         videoTimeStamp = CMTime.zero
     }
@@ -68,30 +68,36 @@ public final class RTMPMuxer {
 
 extension RTMPMuxer: AudioCodecDelegate {
     // MARK: AudioCodecDelegate
-	public func audioCodec(_ codec: AudioCodec, didSet formatDescription: CMFormatDescription?) {
-        guard let formatDescription = formatDescription else {
-            return
-        }
+    func audioCodec(_ codec: AudioCodec, errorOccurred error: AudioCodec.Error) {
+        delegate?.muxer(self, audioCodecErrorOccurred: error)
+    }
+
+    func audioCodec(_ codec: AudioCodec, didOutput audioFormat: AVAudioFormat) {
         var buffer = Data([RTMPMuxer.aac, FLVAACPacketType.seq.rawValue])
-        buffer.append(contentsOf: AudioSpecificConfig(formatDescription: formatDescription).bytes)
+        buffer.append(contentsOf: AudioSpecificConfig(formatDescription: audioFormat.formatDescription).bytes)
         delegate?.muxer(self, didOutputAudio: buffer, withTimestamp: 0)
     }
 
-	public func audioCodec(_ codec: AudioCodec, didOutput sample: UnsafeMutableAudioBufferListPointer, presentationTimeStamp: CMTime) {
+    func audioCodec(_ codec: AudioCodec, didOutput audioBuffer: AVAudioBuffer, presentationTimeStamp: CMTime) {
         let delta = (audioTimeStamp == CMTime.zero ? 0 : presentationTimeStamp.seconds - audioTimeStamp.seconds) * 1000
-        guard let bytes = sample[0].mData, 0 < sample[0].mDataByteSize && 0 <= delta else {
+        guard let audioBuffer = audioBuffer as? AVAudioCompressedBuffer, 0 <= delta else {
             return
         }
         var buffer = Data([RTMPMuxer.aac, FLVAACPacketType.raw.rawValue])
-        buffer.append(bytes.assumingMemoryBound(to: UInt8.self), count: Int(sample[0].mDataByteSize))
+        buffer.append(audioBuffer.data.assumingMemoryBound(to: UInt8.self), count: Int(audioBuffer.byteLength))
         delegate?.muxer(self, didOutputAudio: buffer, withTimestamp: delta)
         audioTimeStamp = presentationTimeStamp
+        codec.releaseOutputBuffer(audioBuffer)
     }
 }
 
 extension RTMPMuxer: VideoCodecDelegate {
     // MARK: VideoCodecDelegate
-	public func videoCodec(_ codec: VideoCodec, didSet formatDescription: CMFormatDescription?) {
+    func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
+        delegate?.muxer(self, videoCodecErrorOccurred: error)
+    }
+
+    func videoCodec(_ codec: VideoCodec, didOutput formatDescription: CMFormatDescription?) {
         guard
             let formatDescription = formatDescription,
             let avcC = AVCConfigurationRecord.getData(formatDescription) else {
@@ -102,17 +108,17 @@ extension RTMPMuxer: VideoCodecDelegate {
         delegate?.muxer(self, didOutputVideo: buffer, withTimestamp: 0)
     }
 
-	public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
-        let keyframe: Bool = !sampleBuffer.isNotSync
+    func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
+        let keyframe = !sampleBuffer.isNotSync
         var compositionTime: Int32 = 0
-        let presentationTimeStamp: CMTime = sampleBuffer.presentationTimeStamp
-        var decodeTimeStamp: CMTime = sampleBuffer.decodeTimeStamp
+        let presentationTimeStamp = sampleBuffer.presentationTimeStamp
+        var decodeTimeStamp = sampleBuffer.decodeTimeStamp
         if decodeTimeStamp == CMTime.invalid {
             decodeTimeStamp = presentationTimeStamp
         } else {
             compositionTime = (videoTimeStamp == .zero) ? 0 : Int32((sampleBuffer.presentationTimeStamp.seconds - videoTimeStamp.seconds) * 1000)
         }
-        let delta = (videoTimeStamp == CMTime.zero ? 0 : decodeTimeStamp.seconds - videoTimeStamp.seconds) * 1000
+        let delta = (videoTimeStamp == .zero ? 0 : decodeTimeStamp.seconds - videoTimeStamp.seconds) * 1000
         guard let data = sampleBuffer.dataBuffer?.data, 0 <= delta else {
             return
         }
@@ -123,7 +129,7 @@ extension RTMPMuxer: VideoCodecDelegate {
         videoTimeStamp = decodeTimeStamp
     }
 
-	public func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
-        delegate?.muxer(self, videoCodecErrorOccurred: error)
+    func videoCodecWillDropFame(_ codec: VideoCodec) -> Bool {
+        return delegate?.muxerWillDropFrame(self) ?? false
     }
 }

@@ -15,8 +15,7 @@
 
 desc "[CI] Review PullRequest."
 lane :review do
-  spm()
-
-
-  # sh("cd .. && bundle exec pod lib lint --allow-warnings")
+  spm
+  carthage(use_xcframeworks: true) if Helper.is_ci?
+  scan(scheme: 'Tests')
 end
