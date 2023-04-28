@@ -19,7 +19,7 @@ public final class IOAudioUnit: NSObject, IOUnit {
     var muted = false
     weak var mixer: IOMixer?
     #if os(iOS) || os(macOS)
-    private(set) var capture: IOAudioCaptureUnit = .init()
+    public var capture: IOAudioCaptureUnit = .init()
     #endif
     private var inSourceFormat: AudioStreamBasicDescription? {
         didSet {

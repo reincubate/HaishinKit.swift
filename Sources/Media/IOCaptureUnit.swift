@@ -212,7 +212,7 @@ public class IOVideoCaptureUnit: IOCaptureUnit {
 public class IOAudioCaptureUnit: IOCaptureUnit {
     typealias Output = AVCaptureAudioDataOutput
 
-    private(set) var device: AVCaptureDevice?
+    public var device: AVCaptureDevice?
     var input: AVCaptureInput?
     var output: Output?
     var connection: AVCaptureConnection?
