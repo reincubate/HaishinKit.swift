@@ -209,7 +209,7 @@ public class IOVideoCaptureUnit: IOCaptureUnit {
     }
 }
 
-class IOAudioCaptureUnit: IOCaptureUnit {
+public class IOAudioCaptureUnit: IOCaptureUnit {
     typealias Output = AVCaptureAudioDataOutput
 
     private(set) var device: AVCaptureDevice?

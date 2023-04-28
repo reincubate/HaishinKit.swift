@@ -1,8 +1,8 @@
 import AVFoundation
 import CoreImage
 
-final class IOVideoUnit: NSObject, IOUnit {
-    enum Error: Swift.Error {
+public final class IOVideoUnit: NSObject, IOUnit {
+    public enum Error: Swift.Error {
         case multiCamNotSupported
     }
 
@@ -108,7 +108,7 @@ final class IOVideoUnit: NSObject, IOUnit {
         }
     }
 
-    private(set) var capture: IOVideoCaptureUnit = .init()
+    public var capture: IOVideoCaptureUnit = .init()
     private(set) var multiCamCapture: IOVideoCaptureUnit = .init()
     #endif
 
@@ -317,7 +317,7 @@ extension IOVideoUnit: IOUnitDecoding {
 #if os(iOS) || os(macOS)
 extension IOVideoUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
     // MARK: AVCaptureVideoDataOutputSampleBufferDelegate
-    func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    public func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if capture.output == captureOutput {
             guard mixer?.useSampleBuffer(sampleBuffer: sampleBuffer, mediaType: AVMediaType.video) == true else {
                 return
@@ -332,18 +332,18 @@ extension IOVideoUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
 
 extension IOVideoUnit: VideoCodecDelegate {
     // MARK: VideoCodecDelegate
-    func videoCodec(_ codec: VideoCodec, didOutput formatDescription: CMFormatDescription?) {
+    public func videoCodec(_ codec: VideoCodec, didOutput formatDescription: CMFormatDescription?) {
     }
 
-    func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
+    public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
         drawable?.enqueue(sampleBuffer)
     }
 
-    func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
+    public func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
         logger.trace(error)
     }
 
-    func videoCodecWillDropFame(_ codec: VideoCodec) -> Bool {
+    public func videoCodecWillDropFame(_ codec: VideoCodec) -> Bool {
         return false
     }
 }

@@ -141,13 +141,13 @@ public class IOMixer {
 
     weak var delegate: IOMixerDelegate?
 
-    lazy var audioIO: IOAudioUnit = {
+    public lazy var audioIO: IOAudioUnit = {
         var audioIO = IOAudioUnit()
         audioIO.mixer = self
         return audioIO
     }()
 
-    lazy var videoIO: IOVideoUnit = {
+    public lazy var videoIO: IOVideoUnit = {
         var videoIO = IOVideoUnit()
         videoIO.mixer = self
         return videoIO
