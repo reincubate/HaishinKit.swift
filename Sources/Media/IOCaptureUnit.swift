@@ -174,7 +174,7 @@ public class IOVideoCaptureUnit: IOCaptureUnit {
                     width: device.activeFormat.formatDescription.dimensions.width,
                     height: device.activeFormat.formatDescription.dimensions.height,
                     frameRate: frameRate,
-                    isMultiCamSupported: device.activeFormat.isMultiCamSupported
+                    isMultiCamSupported: device.activeFormat.canUseMultiCam
                 ) {
                     device.activeFormat = format
                     device.activeVideoMinFrameDuration = CMTime(value: 100, timescale: CMTimeScale(100 * frameRate))

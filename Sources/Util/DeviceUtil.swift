@@ -2,8 +2,10 @@ import AVFoundation
 
 #if os(iOS)
 extension AVCaptureDevice.Format {
-    @available(iOS, obsoleted: 12.0)
-    var isMultiCamSupported: Bool {
+    var canUseMultiCam: Bool {
+        if #available(iOS 13.0, *) {
+            return true
+        }
         return false
     }
 }
