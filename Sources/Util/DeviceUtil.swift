@@ -11,7 +11,7 @@ extension AVCaptureDevice.Format {
 }
 #elseif os(macOS)
 extension AVCaptureDevice.Format {
-    var isMultiCamSupported: Bool {
+    var canUseMultiCam: Bool {
         return true
     }
 }
