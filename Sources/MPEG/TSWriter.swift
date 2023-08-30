@@ -6,12 +6,20 @@ import Foundation
 import SwiftPMSupport
 #endif
 
-/// MPEG-2 TS (Transport Stream) Writer delegate
+/// The interface an MPEG-2 TS (Transport Stream) writer uses to inform its delegates.
 public protocol TSWriterDelegate: AnyObject {
+    func writer(_ writer: TSWriter, didRotateFileHandle timestamp: CMTime)
     func writer(_ writer: TSWriter, didOutput data: Data)
 }
 
-/// MPEG-2 TS (Transport Stream) Writer Foundation class
+public extension TSWriterDelegate {
+    // default implementation noop
+    func writer(_ writer: TSWriter, didRotateFileHandle timestamp: CMTime) {
+        // noop
+    }
+}
+
+/// The TSWriter class represents writes MPEG-2 transport stream data.
 public class TSWriter: Running {
     public static let defaultPATPID: UInt16 = 0
     public static let defaultPMTPID: UInt16 = 4095
@@ -21,7 +29,7 @@ public class TSWriter: Running {
     public static let defaultSegmentDuration: Double = 2
 
     /// The delegate instance.
-    public weak var delegate: TSWriterDelegate?
+    public weak var delegate: (any TSWriterDelegate)?
     /// This instance is running to process(true) or not(false).
     public internal(set) var isRunning: Atomic<Bool> = .init(false)
     /// The exptected medias = [.video, .audio].
@@ -45,7 +53,7 @@ public class TSWriter: Running {
             writeProgramIfNeeded()
         }
     }
-    private var videoConfig: AVCConfigurationRecord? {
+    private var videoConfig: AVCDecoderConfigurationRecord? {
         didSet {
             writeProgramIfNeeded()
         }
@@ -98,7 +106,7 @@ public class TSWriter: Running {
         isRunning.mutate { $0 = false }
     }
 
-    // swiftlint:disable function_parameter_count
+    // swiftlint:disable:next function_parameter_count
     final func writeSampleBuffer(_ PID: UInt16, streamID: UInt8, bytes: UnsafePointer<UInt8>?, count: UInt32, presentationTimeStamp: CMTime, decodeTimeStamp: CMTime, randomAccessIndicator: Bool) {
         guard canWriteFor else {
             return
@@ -165,6 +173,7 @@ public class TSWriter: Running {
         }
         writeProgram()
         rotatedTimestamp = timestamp
+        delegate?.writer(self, didRotateFileHandle: timestamp)
     }
 
     func write(_ data: Data) {
@@ -244,7 +253,7 @@ extension TSWriter: VideoCodecDelegate {
     public func videoCodec(_ codec: VideoCodec, didOutput formatDescription: CMFormatDescription?) {
         guard
             let formatDescription,
-            let avcC = AVCConfigurationRecord.getData(formatDescription) else {
+            let avcC = AVCDecoderConfigurationRecord.getData(formatDescription) else {
             return
         }
         var data = ESSpecificData()
@@ -252,7 +261,7 @@ extension TSWriter: VideoCodecDelegate {
         data.elementaryPID = TSWriter.defaultVideoPID
         PMT.elementaryStreamSpecificData.append(data)
         videoContinuityCounter = 0
-        videoConfig = AVCConfigurationRecord(data: avcC)
+        videoConfig = AVCDecoderConfigurationRecord(data: avcC)
     }
 
     public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {

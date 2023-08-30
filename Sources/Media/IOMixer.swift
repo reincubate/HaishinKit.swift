@@ -16,8 +16,8 @@ protocol IOMixerDelegate: AnyObject {
     func mixer(_ mixer: IOMixer, didOutput audio: AVAudioPCMBuffer, presentationTimeStamp: CMTime)
     func mixer(_ mixer: IOMixer, didOutput video: CMSampleBuffer)
     #if os(iOS)
-    func mixer(_ mixer: IOMixer, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason)
-    func mixer(_ mixer: IOMixer, sessionInterruptionEnded session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason)
+    func mixer(_ mixer: IOMixer, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason?)
+    func mixer(_ mixer: IOMixer, sessionInterruptionEnded session: AVCaptureSession)
     #endif
 }
 
@@ -106,6 +106,26 @@ public class IOMixer {
         }
     }
 
+    var inBackgroundMode = false {
+        didSet {
+            guard inBackgroundMode != oldValue else {
+                return
+            }
+            if inBackgroundMode {
+                if !session.isMultitaskingCameraAccessEnabled {
+                    videoIO.multiCamCapture.detachSession(session)
+                    videoIO.capture.detachSession(session)
+                }
+            } else {
+                startCaptureSessionIfNeeded()
+                if !session.isMultitaskingCameraAccessEnabled {
+                    videoIO.capture.attachSession(session)
+                    videoIO.multiCamCapture.attachSession(session)
+                }
+            }
+        }
+    }
+
     /// The capture session instance.
     public internal(set) lazy var session: AVCaptureSession = makeSession() {
         didSet {
@@ -123,12 +143,13 @@ public class IOMixer {
         }
     }
     #endif
+
     public private(set) var isRunning: Atomic<Bool> = .init(false)
     /// The recorder instance.
     public lazy var recorder = IORecorder()
 
     /// Specifies the drawable object.
-    public weak var drawable: NetStreamDrawable? {
+    public weak var drawable: (any NetStreamDrawable)? {
         get {
             videoIO.drawable
         }
@@ -139,7 +160,7 @@ public class IOMixer {
 
     var mediaSync = MediaSync.passthrough
 
-    weak var delegate: IOMixerDelegate?
+    weak var delegate: (any IOMixerDelegate)?
 
     public lazy var audioIO: IOAudioUnit = {
         var audioIO = IOAudioUnit()
@@ -182,7 +203,7 @@ public class IOMixer {
                 audioIO.codec.appendSampleBuffer(sampleBuffer)
             case kCMMediaType_Video:
                 videoIO.codec.formatDescription = sampleBuffer.formatDescription
-                mediaLink.enqueueVideo(sampleBuffer)
+                videoIO.codec.appendSampleBuffer(sampleBuffer)
             default:
                 break
             }
@@ -217,7 +238,7 @@ public class IOMixer {
         if session.canSetSessionPreset(sessionPreset) {
             session.sessionPreset = sessionPreset
         }
-        if #available(iOS 16.0, *), isMultitaskingCameraAccessEnabled, session.isMultitaskingCameraAccessSupported {
+        if isMultitaskingCameraAccessEnabled && session.isMultitaskingCameraAccessSupported {
             session.isMultitaskingCameraAccessEnabled = true
         }
         return session
@@ -237,7 +258,7 @@ public class IOMixer {
 
 extension IOMixer: IOUnitEncoding {
     /// Starts encoding for video and audio data.
-    public func startEncoding(_ delegate: AVCodecDelegate) {
+    public func startEncoding(_ delegate: any AVCodecDelegate) {
         guard readyState == .standby else {
             return
         }
@@ -286,7 +307,8 @@ extension IOMixer: IOUnitDecoding {
 extension IOMixer: MediaLinkDelegate {
     // MARK: MediaLinkDelegate
     func mediaLink(_ mediaLink: MediaLink, dequeue sampleBuffer: CMSampleBuffer) {
-        videoIO.codec.appendSampleBuffer(sampleBuffer)
+        delegate?.mixer(self, didOutput: sampleBuffer)
+        drawable?.enqueue(sampleBuffer)
     }
 
     func mediaLink(_ mediaLink: MediaLink, didBufferingChanged: Bool) {
@@ -301,10 +323,6 @@ extension IOMixer: Running {
         guard !isRunning.value else {
             return
         }
-        #if os(iOS)
-        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground(_:)), name: UIApplication.didEnterBackgroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(didBecomeActive(_:)), name: UIApplication.didBecomeActiveNotification, object: nil)
-        #endif
         addSessionObservers(session)
         session.startRunning()
         isRunning.mutate { $0 = session.isRunning }
@@ -316,10 +334,14 @@ extension IOMixer: Running {
         }
         removeSessionObservers(session)
         session.stopRunning()
-        #if os(iOS)
-        NotificationCenter.default.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
-        #endif
+        isRunning.mutate { $0 = session.isRunning }
+    }
+
+    func startCaptureSessionIfNeeded() {
+        guard isRunning.value && !session.isRunning else {
+            return
+        }
+        session.startRunning()
         isRunning.mutate { $0 = session.isRunning }
     }
 
@@ -380,7 +402,7 @@ extension IOMixer: Running {
             }
         #if os(iOS)
         case .mediaServicesWereReset:
-            resumeCaptureSessionIfNeeded()
+            startCaptureSessionIfNeeded()
         #endif
         default:
             break
@@ -390,10 +412,13 @@ extension IOMixer: Running {
     #if os(iOS)
     @objc
     private func sessionWasInterrupted(_ notification: Notification) {
+        guard let session = notification.object as? AVCaptureSession else {
+            return
+        }
         guard let userInfoValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as AnyObject?,
               let reasonIntegerValue = userInfoValue.integerValue,
-              let reason = AVCaptureSession.InterruptionReason(rawValue: reasonIntegerValue),
-              let session = notification.object as? AVCaptureSession else {
+              let reason = AVCaptureSession.InterruptionReason(rawValue: reasonIntegerValue) else {
+            delegate?.mixer(self, sessionWasInterrupted: session, reason: nil)
             return
         }
         delegate?.mixer(self, sessionWasInterrupted: session, reason: reason)
@@ -401,46 +426,9 @@ extension IOMixer: Running {
 
     @objc
     private func sessionInterruptionEnded(_ notification: Notification) {
-        guard let userInfoValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as AnyObject?,
-              let reasonIntegerValue = userInfoValue.integerValue,
-              let reason = AVCaptureSession.InterruptionReason(rawValue: reasonIntegerValue),
-              let session = notification.object as? AVCaptureSession else {
-            return
-        }
-        delegate?.mixer(self, sessionInterruptionEnded: session, reason: reason)
-    }
-
-    @objc
-    private func didEnterBackground(_ notification: Notification) {
-        if #available(iOS 16, *) {
-            guard !session.isMultitaskingCameraAccessEnabled else {
-                return
-            }
-        }
-        videoIO.multiCamCapture.detachSession(session)
-        videoIO.capture.detachSession(session)
-    }
-
-    @objc
-    private func didBecomeActive(_ notification: Notification) {
-        resumeCaptureSessionIfNeeded()
-        if #available(iOS 16, *) {
-            guard !session.isMultitaskingCameraAccessEnabled else {
-                return
-            }
-        }
-        videoIO.capture.attachSession(session)
-        videoIO.multiCamCapture.attachSession(session)
+        delegate?.mixer(self, sessionInterruptionEnded: session)
     }
     #endif
-
-    private func resumeCaptureSessionIfNeeded() {
-        guard isRunning.value && !session.isRunning else {
-            return
-        }
-        session.startRunning()
-        isRunning.mutate { $0 = session.isRunning }
-    }
 }
 #else
 extension IOMixer: Running {
@@ -448,6 +436,9 @@ extension IOMixer: Running {
     }
 
     public func stopRunning() {
+    }
+
+    func startCaptureSession() {
     }
 }
 #endif

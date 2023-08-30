@@ -150,12 +150,12 @@ struct PacketizedElementaryStream: PESPacketHeader {
     static let untilPacketLengthSize: Int = 6
     static let startCode = Data([0x00, 0x00, 0x01])
 
-    // swiftlint:disable function_parameter_count
+    // swiftlint:disable:next function_parameter_count
     static func create(_ bytes: UnsafePointer<UInt8>?, count: UInt32, presentationTimeStamp: CMTime, decodeTimeStamp: CMTime, timestamp: CMTime, config: Any?, randomAccessIndicator: Bool) -> PacketizedElementaryStream? {
         if let config: AudioSpecificConfig = config as? AudioSpecificConfig {
             return PacketizedElementaryStream(bytes: bytes, count: count, presentationTimeStamp: presentationTimeStamp, decodeTimeStamp: decodeTimeStamp, timestamp: timestamp, config: config)
         }
-        if let config: AVCConfigurationRecord = config as? AVCConfigurationRecord {
+        if let config: AVCDecoderConfigurationRecord = config as? AVCDecoderConfigurationRecord {
             return PacketizedElementaryStream(bytes: bytes, count: count, presentationTimeStamp: presentationTimeStamp, decodeTimeStamp: decodeTimeStamp, timestamp: timestamp, config: randomAccessIndicator ? config : nil)
         }
         return nil
@@ -231,11 +231,11 @@ struct PacketizedElementaryStream: PESPacketHeader {
         }
     }
 
-    init?(bytes: UnsafePointer<UInt8>?, count: UInt32, presentationTimeStamp: CMTime, decodeTimeStamp: CMTime, timestamp: CMTime, config: AVCConfigurationRecord?) {
+    init?(bytes: UnsafePointer<UInt8>?, count: UInt32, presentationTimeStamp: CMTime, decodeTimeStamp: CMTime, timestamp: CMTime, config: AVCDecoderConfigurationRecord?) {
         guard let bytes = bytes else {
             return nil
         }
-        if let config: AVCConfigurationRecord = config {
+        if let config: AVCDecoderConfigurationRecord = config {
             data.append(contentsOf: [0x00, 0x00, 0x00, 0x01, 0x09, 0x10])
             data.append(contentsOf: [0x00, 0x00, 0x00, 0x01])
             data.append(contentsOf: config.sequenceParameterSets[0])
@@ -327,13 +327,15 @@ struct PacketizedElementaryStream: PESPacketHeader {
     }
 
     mutating func makeSampleBuffer(_ streamType: ESStreamType, previousPresentationTimeStamp: CMTime, formatDescription: CMFormatDescription?) -> CMSampleBuffer? {
-        let blockBuffer = data.makeBlockBuffer(advancedBy: 0)
+        var blockBuffer: CMBlockBuffer?
         var sampleSizes: [Int] = []
         switch streamType {
         case .h264:
             _ = AVCFormatStream.toNALFileFormat(&data)
+            blockBuffer = data.makeBlockBuffer(advancedBy: 0)
             sampleSizes.append(blockBuffer?.dataLength ?? 0)
         case .adtsAac:
+            blockBuffer = data.makeBlockBuffer(advancedBy: 0)
             let reader = ADTSReader()
             reader.read(data)
             var iterator = reader.makeIterator()

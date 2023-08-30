@@ -23,10 +23,47 @@ public class AudioCodec {
         case failedToCreate(from: AVAudioFormat, to: AVAudioFormat)
         case failedToConvert(error: NSError)
     }
-    /// Specifies the output format.
-    public var destination: AudioCodecFormat = .aac
+
+    static func makeAudioFormat(_ inSourceFormat: inout AudioStreamBasicDescription) -> AVAudioFormat? {
+        if inSourceFormat.mFormatID == kAudioFormatLinearPCM && kLinearPCMFormatFlagIsBigEndian == (inSourceFormat.mFormatFlags & kLinearPCMFormatFlagIsBigEndian) {
+            // ReplayKit audioApp.
+            guard inSourceFormat.mBitsPerChannel == 16 else {
+                return nil
+            }
+            if let layout = Self.makeChannelLayout(inSourceFormat.mChannelsPerFrame) {
+                return .init(commonFormat: .pcmFormatInt16, sampleRate: inSourceFormat.mSampleRate, interleaved: true, channelLayout: layout)
+            }
+            return AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: inSourceFormat.mSampleRate, channels: inSourceFormat.mChannelsPerFrame, interleaved: true)
+        }
+        if let layout = Self.makeChannelLayout(inSourceFormat.mChannelsPerFrame) {
+            return .init(streamDescription: &inSourceFormat, channelLayout: layout)
+        }
+        return .init(streamDescription: &inSourceFormat)
+    }
+
+    static func makeChannelLayout(_ numberOfChannels: UInt32) -> AVAudioChannelLayout? {
+        guard numberOfChannels > 2 else {
+            return nil
+        }
+        return AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | numberOfChannels)
+    }
+
+    /// Creates a channel map for specific input and output format
+    /// - Examples:
+    ///   - Input channel count is 4 and 2, result:  [0, 1, -1, -1]
+    ///   - Input channel count is 2 and 2, result:  [0, 1]
+    static func makeChannelMap(from fromFormat: AVAudioFormat, to toFormat: AVAudioFormat) -> [NSNumber] {
+        let inChannels = Int(fromFormat.channelCount)
+        let outChannels = Int(toFormat.channelCount)
+        let channelIndexes = Array(0...inChannels - 1)
+        return channelIndexes
+            .prefix(outChannels)
+            .map { NSNumber(value: $0) }
+            + Array(repeating: -1, count: max(0, inChannels - outChannels))
+    }
+
     /// Specifies the delegate.
-    public weak var delegate: AudioCodecDelegate?
+    public weak var delegate: (any AudioCodecDelegate)?
     /// This instance is running to process(true) or not(false).
     public private(set) var isRunning: Atomic<Bool> = .init(false)
     /// Specifies the settings for audio codec.
@@ -56,7 +93,7 @@ public class AudioCodec {
         guard isRunning.value else {
             return
         }
-        switch destination {
+        switch settings.format {
         case .aac:
             guard let audioConverter, let ringBuffer else {
                 return
@@ -143,18 +180,21 @@ public class AudioCodec {
             return nil
         }
         if outputBuffers.isEmpty {
-            return destination.makeAudioBuffer(outputFormat)
+            return settings.format.makeAudioBuffer(outputFormat)
         }
         return outputBuffers.removeFirst()
     }
 
     private func makeAudioConverter(_ inSourceFormat: inout AudioStreamBasicDescription) -> AVAudioConverter? {
         guard
-            let inputFormat = AVAudioFormat(streamDescription: &inSourceFormat),
-            let outputFormat = destination.makeAudioFormat(inSourceFormat) else {
+            let inputFormat = Self.makeAudioFormat(&inSourceFormat),
+            let outputFormat = settings.format.makeAudioFormat(inSourceFormat) else {
             return nil
         }
+        logger.debug("inputFormat: \(inputFormat)")
+        logger.debug("outputFormat: \(outputFormat)")
         let converter = AVAudioConverter(from: inputFormat, to: outputFormat)
+        converter?.channelMap = Self.makeChannelMap(from: inputFormat, to: outputFormat)
         settings.apply(converter, oldValue: nil)
         if converter == nil {
             delegate?.audioCodec(self, errorOccurred: .failedToCreate(from: inputFormat, to: outputFormat))

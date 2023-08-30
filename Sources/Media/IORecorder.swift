@@ -1,4 +1,7 @@
 import AVFoundation
+#if canImport(SwiftPMSupport)
+import SwiftPMSupport
+#endif
 
 /// The interface an IORecorder uses to inform its delegate.
 public protocol IORecorderDelegate: AnyObject {
@@ -11,12 +14,12 @@ public protocol IORecorderDelegate: AnyObject {
 // MARK: -
 /// The IORecorder class represents video and audio recorder.
 public class IORecorder {
-    private static let interpolationThreshold = 1024 * 4
-
     /// The IORecorder error domain codes.
     public enum Error: Swift.Error {
         /// Failed to create the AVAssetWriter.
         case failedToCreateAssetWriter(error: Swift.Error)
+        /// Failed to create the AVAssetWriterInput.
+        case failedToCreateAssetWriterInput(error: NSException)
         /// Failed to append the PixelBuffer or SampleBuffer.
         case failedToAppend(error: Swift.Error?)
         /// Failed to finish writing the AVAssetWriter.
@@ -38,7 +41,7 @@ public class IORecorder {
     ]
 
     /// Specifies the delegate.
-    public weak var delegate: IORecorderDelegate?
+    public weak var delegate: (any IORecorderDelegate)?
     /// Specifies the recorder settings.
     public var outputSettings: [AVMediaType: [String: Any]] = IORecorder.defaultOutputSettings
     /// The running indicies whether recording or not.
@@ -54,8 +57,9 @@ public class IORecorder {
     private var writer: AVAssetWriter?
     private var writerInputs: [AVMediaType: AVAssetWriterInput] = [:]
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
-    private var audioPresentationTime = CMTime.zero
-    private var videoPresentationTime = CMTime.zero
+    private var audioPresentationTime: CMTime = .zero
+    private var videoPresentationTime: CMTime = .zero
+    private var dimensions: CMVideoDimensions = .init(width: 0, height: 0)
 
     #if os(iOS)
     private lazy var moviesDirectory: URL = {
@@ -68,7 +72,11 @@ public class IORecorder {
     #endif
 
     /// Append a sample buffer for recording.
-    public func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer, mediaType: AVMediaType) {
+    public func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        guard isRunning.value else {
+            return
+        }
+        let mediaType: AVMediaType = (sampleBuffer.formatDescription?._mediaType == kCMMediaType_Video) ? .video : .audio
         lockQueue.async {
             guard
                 let writer = self.writer,
@@ -108,10 +116,16 @@ public class IORecorder {
 
     /// Append a pixel buffer for recording.
     public func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, withPresentationTime: CMTime) {
+        guard isRunning.value else {
+            return
+        }
         lockQueue.async {
+            if self.dimensions.width != pixelBuffer.width || self.dimensions.height != pixelBuffer.height {
+                self.dimensions = .init(width: Int32(pixelBuffer.width), height: Int32(pixelBuffer.height))
+            }
             guard
                 let writer = self.writer,
-                let input = self.makeWriterInput(.video, sourceFormatHint: CMVideoFormatDescription.create(pixelBuffer: pixelBuffer)),
+                let input = self.makeWriterInput(.video, sourceFormatHint: nil),
                 let adaptor = self.makePixelBufferAdaptor(input),
                 self.isReadyForStartWriting && self.videoPresentationTime.seconds < withPresentationTime.seconds else {
                 return
@@ -180,15 +194,12 @@ public class IORecorder {
                     }
                 }
             case .video:
-                guard let format = sourceFormatHint else {
-                    break
-                }
                 for (key, value) in defaultOutputSettings {
                     switch key {
                     case AVVideoHeightKey:
-                        outputSettings[key] = AnyUtil.isZero(value) ? Int(format.dimensions.height) : value
+                        outputSettings[key] = AnyUtil.isZero(value) ? Int(dimensions.height) : value
                     case AVVideoWidthKey:
-                        outputSettings[key] = AnyUtil.isZero(value) ? Int(format.dimensions.width) : value
+                        outputSettings[key] = AnyUtil.isZero(value) ? Int(dimensions.width) : value
                     default:
                         outputSettings[key] = value
                     }
@@ -197,12 +208,17 @@ public class IORecorder {
                 break
             }
         }
-
-        let input = AVAssetWriterInput(mediaType: mediaType, outputSettings: outputSettings, sourceFormatHint: sourceFormatHint)
-        input.expectsMediaDataInRealTime = true
-        writerInputs[mediaType] = input
-        writer?.add(input)
-
+        var input: AVAssetWriterInput?
+        nstry {
+            input = AVAssetWriterInput(mediaType: mediaType, outputSettings: outputSettings, sourceFormatHint: sourceFormatHint)
+            input?.expectsMediaDataInRealTime = true
+            self.writerInputs[mediaType] = input
+            if let input {
+                self.writer?.add(input)
+            }
+        } _: { exception in
+            self.delegate?.recorder(self, errorOccured: .failedToCreateAssetWriterInput(error: exception))
+        }
         return input
     }
 

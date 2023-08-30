@@ -4,6 +4,9 @@ import CoreMedia
 #if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 /// The interface a NetStream uses to inform its delegate.
 public protocol NetStreamDelegate: AnyObject {
@@ -13,9 +16,9 @@ public protocol NetStreamDelegate: AnyObject {
     func stream(_ stream: NetStream, didOutput video: CMSampleBuffer)
     #if os(iOS)
     /// Tells the receiver to session was interrupted.
-    func stream(_ stream: NetStream, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason)
+    func stream(_ stream: NetStream, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason?)
     /// Tells the receiver to session interrupted ended.
-    func stream(_ stream: NetStream, sessionInterruptionEnded session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason)
+    func stream(_ stream: NetStream, sessionInterruptionEnded session: AVCaptureSession)
     #endif
     /// Tells the receiver to video codec error occured.
     func stream(_ stream: NetStream, videoCodecErrorOccurred error: VideoCodec.Error)
@@ -40,10 +43,22 @@ open class NetStream: NSObject {
     private static let queueValue = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 
     /// The mixer object.
-    public private(set) var mixer = IOMixer()
+    public private(set) lazy var mixer: IOMixer = {
+        let mixer = IOMixer()
+        mixer.delegate = self
+        return mixer
+    }()
     /// Specifies the delegate of the NetStream.
-    public weak var delegate: NetStreamDelegate?
-
+    public weak var delegate: (any NetStreamDelegate)?
+    /// Specifies the loopback audio or not.
+    public var loopback: Bool {
+        get {
+            mixer.audioIO.loopback
+        }
+        set {
+            mixer.audioIO.loopback = newValue
+        }
+    }
     /// Specifies the context object.
     public var context: CIContext {
         get {
@@ -164,6 +179,15 @@ open class NetStream: NSObject {
         }
     }
 
+    /// Creates a NetStream object.
+    override public init() {
+        super.init()
+        #if os(iOS)
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground(_:)), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground(_:)), name: UIApplication.willEnterForegroundNotification, object: nil)
+        #endif
+    }
+
     #if os(iOS) || os(macOS)
     /// Attaches the primary camera object.
     /// - Warning: This method can't use appendSampleBuffer at the same time.
@@ -271,7 +295,7 @@ open class NetStream: NSObject {
     }
 
     /// Starts recording.
-    public func startRecording(_ settings: [AVMediaType: [String: Any]]) {
+    public func startRecording(_ settings: [AVMediaType: [String: Any]] = IORecorder.defaultOutputSettings) {
         mixer.recorder.outputSettings = settings
         mixer.recorder.startRunning()
     }
@@ -280,11 +304,47 @@ open class NetStream: NSObject {
     public func stopRecording() {
         mixer.recorder.stopRunning()
     }
+
+    #if os(iOS)
+    @objc
+    private func didEnterBackground(_ notification: Notification) {
+        // Require main thread. Otherwise the microphone cannot be used in the background.
+        mixer.inBackgroundMode = true
+    }
+
+    @objc
+    private func willEnterForeground(_ notification: Notification) {
+        lockQueue.async {
+            self.mixer.inBackgroundMode = false
+        }
+    }
+    #endif
+}
+
+extension NetStream: IOMixerDelegate {
+    // MARK: IOMixerDelegate
+    func mixer(_ mixer: IOMixer, didOutput video: CMSampleBuffer) {
+        delegate?.stream(self, didOutput: video)
+    }
+
+    func mixer(_ mixer: IOMixer, didOutput audio: AVAudioPCMBuffer, presentationTimeStamp: CMTime) {
+        delegate?.stream(self, didOutput: audio, presentationTimeStamp: presentationTimeStamp)
+    }
+
+    #if os(iOS)
+    func mixer(_ mixer: IOMixer, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason?) {
+        delegate?.stream(self, sessionWasInterrupted: session, reason: reason)
+    }
+
+    func mixer(_ mixer: IOMixer, sessionInterruptionEnded session: AVCaptureSession) {
+        delegate?.stream(self, sessionInterruptionEnded: session)
+    }
+    #endif
 }
 
 extension NetStream: IOScreenCaptureUnitDelegate {
     // MARK: IOScreenCaptureUnitDelegate
-    public func session(_ session: IOScreenCaptureUnit, didOutput pixelBuffer: CVPixelBuffer, presentationTime: CMTime) {
+    public func session(_ session: any IOScreenCaptureUnit, didOutput pixelBuffer: CVPixelBuffer, presentationTime: CMTime) {
         var timingInfo = CMSampleTimingInfo(
             duration: .invalid,
             presentationTimeStamp: presentationTime,

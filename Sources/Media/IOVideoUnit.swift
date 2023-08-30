@@ -21,7 +21,7 @@ public final class IOVideoUnit: NSObject, IOUnit {
         }
     }
 
-    weak var drawable: NetStreamDrawable? {
+    weak var drawable: (any NetStreamDrawable)? {
         didSet {
             #if os(iOS) || os(macOS)
             drawable?.videoOrientation = videoOrientation
@@ -69,10 +69,6 @@ public final class IOVideoUnit: NSObject, IOUnit {
     #if os(iOS) || os(macOS)
     var frameRate = IOMixer.defaultFrameRate {
         didSet {
-            guard frameRate != oldValue else {
-                return
-            }
-            codec.settings.expectedFrameRate = frameRate
             capture.setFrameRate(frameRate)
             multiCamCapture.setFrameRate(frameRate)
         }
@@ -132,6 +128,17 @@ public final class IOVideoUnit: NSObject, IOUnit {
         guard let mixer, self.capture.device != device else {
             return
         }
+        guard let device else {
+            mixer.mediaSync = .passthrough
+            mixer.session.beginConfiguration()
+            defer {
+                mixer.session.commitConfiguration()
+            }
+            capture.detachSession(mixer.session)
+            try capture.attachDevice(nil, videoUnit: self)
+            return
+        }
+        mixer.mediaSync = .video
         mixer.session.beginConfiguration()
         defer {
             mixer.session.commitConfiguration()
@@ -139,11 +146,6 @@ public final class IOVideoUnit: NSObject, IOUnit {
                 setTorchMode(.on)
             }
         }
-        guard let device else {
-            mixer.mediaSync = .passthrough
-            return
-        }
-        mixer.mediaSync = .video
         if multiCamCapture.device == device {
             try multiCamCapture.attachDevice(nil, videoUnit: self)
         }
@@ -161,7 +163,6 @@ public final class IOVideoUnit: NSObject, IOUnit {
             return
         }
         guard let device else {
-            mixer.isMultiCamSessionEnabled = false
             mixer.session.beginConfiguration()
             defer {
                 mixer.session.commitConfiguration()
@@ -288,7 +289,7 @@ public final class IOVideoUnit: NSObject, IOUnit {
 
 extension IOVideoUnit: IOUnitEncoding {
     // MARK: IOUnitEncoding
-    func startEncoding(_ delegate: AVCodecDelegate) {
+    func startEncoding(_ delegate: any AVCodecDelegate) {
         codec.delegate = delegate
         codec.startRunning()
     }
@@ -336,7 +337,7 @@ extension IOVideoUnit: VideoCodecDelegate {
     }
 
     public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
-        drawable?.enqueue(sampleBuffer)
+        mixer?.mediaLink.enqueueVideo(sampleBuffer)
     }
 
     public func videoCodec(_ codec: VideoCodec, errorOccurred error: VideoCodec.Error) {
