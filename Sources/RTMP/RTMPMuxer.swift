@@ -25,7 +25,7 @@ public final class RTMPMuxer {
 	public func setVideoFormatDescription(_ formatDescription: CMFormatDescription?) {
 		guard
 			let formatDescription = formatDescription,
-			let avcC = AVCConfigurationRecord.getData(formatDescription) else {
+			let avcC = AVCDecoderConfigurationRecord.getData(formatDescription) else {
 			return
 		}
 		var buffer = Data([FLVFrameType.key.rawValue << 4 | FLVVideoCodec.avc.rawValue, FLVAVCPacketType.seq.rawValue, 0, 0, 0])
