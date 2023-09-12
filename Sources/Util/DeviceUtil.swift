@@ -88,40 +88,41 @@ extension AVCaptureDevice.Format {
 
 #if os(iOS) || os(macOS)
 extension AVFrameRateRange {
-    func clamp(rate: Float64) -> Float64 {
-        max(minFrameRate, min(maxFrameRate, rate))
-    }
-
-    func contains(frameRate: Float64) -> Bool {
-        (minFrameRate...maxFrameRate) ~= frameRate
-    }
+//    func clamp(rate: Float64) -> Float64 {
+//        max(minFrameRate, min(maxFrameRate, rate))
+//    }
+//
+//    func contains(frameRate: Float64) -> Bool {
+//        (minFrameRate...maxFrameRate) ~= frameRate
+//    }
 }
 
-extension AVCaptureDevice.Format {
-    func isFrameRateSupported(_ frameRate: Float64) -> Bool {
-        var durations: [CMTime] = []
-        var frameRates: [Float64] = []
-        for range in videoSupportedFrameRateRanges {
-            if range.minFrameRate == range.maxFrameRate {
-                durations.append(range.minFrameDuration)
-                frameRates.append(range.maxFrameRate)
-                continue
-            }
-            if range.contains(frameRate: frameRate) {
-                return true
-            }
-            return false
-        }
-        let diff = frameRates.map { abs($0 - frameRate) }
-        if let minElement: Float64 = diff.min() {
-            for i in 0..<diff.count where diff[i] == minElement {
-                return true
-            }
-        }
-        return false
-    }
-}
+//extension AVCaptureDevice.Format {
+//    func isFrameRateSupported(_ frameRate: Float64) -> Bool {
+//        var durations: [CMTime] = []
+//        var frameRates: [Float64] = []
+//        for range in videoSupportedFrameRateRanges {
+//            if range.minFrameRate == range.maxFrameRate {
+//                durations.append(range.minFrameDuration)
+//                frameRates.append(range.maxFrameRate)
+//                continue
+//            }
+//            if range.contains(frameRate: frameRate) {
+//                return true
+//            }
+//            return false
+//        }
+//        let diff = frameRates.map { abs($0 - frameRate) }
+//        if let minElement: Float64 = diff.min() {
+//            for i in 0..<diff.count where diff[i] == minElement {
+//                return true
+//            }
+//        }
+//        return false
+//    }
+//}
 
+#elseif os(macOS)
 /// The namespace of DeviceUtil.
 public enum DeviceUtil {
     /// Lookup device by localizedName and mediaType.
