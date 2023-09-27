@@ -102,7 +102,7 @@ extension PiPHKView: NetStreamDrawable {
         }
     }
 }
-#else
+#elseif os(macOS)
 
 import AppKit
 import AVFoundation
