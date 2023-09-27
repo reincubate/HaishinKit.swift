@@ -4,6 +4,7 @@ import MetalKit
 /**
  * A view that displays a video content of a NetStream object which uses Metal api.
  */
+#if !os(visionOS)
 public class MTHKView: MTKView {
     public var isMirrored = false
     /// Specifies how the video is displayed within a player layer’s bounds.
@@ -148,3 +149,4 @@ extension MTHKView: MTKViewDelegate {
         commandBuffer.commit()
     }
 }
+#endif
