@@ -85,7 +85,6 @@ open class NetStream: NSObject {
             }
         }
     }
-    #endif
 
     /// Specifies the frame rate of a device capture.
     public var frameRate: Float64 {
@@ -103,7 +102,6 @@ open class NetStream: NSObject {
         }
     }
 
-    #if os(iOS) || os(macOS)
     /// Specifies the sessionPreset for the AVCaptureSession.
     public var sessionPreset: AVCaptureSession.Preset {
         get {
