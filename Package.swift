@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "HaishinKit", targets: ["HaishinKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/shogo4405/Logboard.git", from: "2.3.1")
+        .package(url: "https://github.com/shogo4405/Logboard.git", "2.3.1"..<"2.5.0")
     ],
     targets: [
         .target(name: "SwiftPMSupport"),
