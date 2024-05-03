@@ -124,6 +124,8 @@ extension AMF0Serializer: AMFSerializer {
             return serialize(Double(value))
         case let value as Float:
             return serialize(Double(value))
+        case let value as CGFloat:
+            return serialize(Double(value))
         case let value as Double:
             return serialize(Double(value))
         case let value as Date:
@@ -131,6 +133,8 @@ extension AMF0Serializer: AMFSerializer {
         case let value as String:
             return serialize(value)
         case let value as Bool:
+            return serialize(value)
+        case let value as [Any?]:
             return serialize(value)
         case let value as ASArray:
             return serialize(value)

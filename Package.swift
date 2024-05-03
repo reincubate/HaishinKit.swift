@@ -1,13 +1,14 @@
-// swift-tools-version:5.5
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 import PackageDescription
 
 let package = Package(
     name: "HaishinKit",
     platforms: [
-        .iOS(.v11),
-        .tvOS(.v11),
-        .macOS(.v10_13),
+        .iOS(.v13),
+        .tvOS(.v13),
+        .visionOS(.v1),
+        .macOS(.v10_15),
         .macCatalyst(.v14)
     ],
     products: [
@@ -15,7 +16,7 @@ let package = Package(
         .library(name: "SRTHaishinKit", targets: ["SRTHaishinKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/shogo4405/Logboard.git", "2.3.1"..<"2.4.0")
+        .package(url: "https://github.com/shogo4405/Logboard.git", "2.5.0"..<"2.6.0")
     ],
     targets: [
         .binaryTarget(
@@ -29,13 +30,12 @@ let package = Package(
                 sources: [
                     "Codec",
                     "Extension",
-                    "FLV",
-                    "HTTP",
-                    "Media",
-                    "MPEG",
+                    "IO",
+                    "ISO",
                     "Net",
                     "RTMP",
-                    "Util",
+                    "Screen",
+                    "Util"
                 ]),
         .target(name: "SRTHaishinKit",
                 dependencies: [
