@@ -65,9 +65,7 @@ final class ViewModel: ObservableObject {
             rtmpStream.videoOrientation = orientation
         }
         rtmpStream.sessionPreset = .hd1280x720
-        rtmpStream.videoSettings.videoSize = .init(width: 720, height: 1280)
-        rtmpStream.mixer.recorder.delegate = self
-
+        rtmpStream.videoSettings.videoSize = .init(width: 1280, height: 720)
         nc.publisher(for: UIDevice.orientationDidChangeNotification, object: nil)
             .sink { [weak self] _ in
                 guard let orientation = DeviceUtil.videoOrientation(by: UIDevice.current.orientation), let self = self else {
@@ -95,11 +93,15 @@ final class ViewModel: ObservableObject {
     }
 
     func registerForPublishEvent() {
-        rtmpStream.attachAudio(AVCaptureDevice.default(for: .audio)) { error in
-            logger.error(error)
+        rtmpStream.attachAudio(AVCaptureDevice.default(for: .audio)) { _, error in
+            if let error {
+                logger.error(error)
+            }
         }
-        rtmpStream.attachCamera(AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentPosition)) { error in
-            logger.error(error)
+        rtmpStream.attachCamera(AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentPosition)) { _, error  in
+            if let error {
+                logger.error(error)
+            }
         }
         rtmpStream.publisher(for: \.currentFPS)
             .sink { [weak self] currentFPS in
@@ -172,7 +174,7 @@ final class ViewModel: ObservableObject {
 
     func rotateCamera() {
         let position: AVCaptureDevice.Position = currentPosition == .back ? .front : .back
-        rtmpStream.attachCamera(AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)) { error in
+        rtmpStream.attachCamera(AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)) { _, error  in
             logger.error(error)
         }
         currentPosition = position
@@ -192,7 +194,7 @@ final class ViewModel: ObservableObject {
     }
 
     func changeVideoRate(level: CGFloat) {
-        rtmpStream.videoSettings.bitRate = UInt32(level * 1000)
+        rtmpStream.videoSettings.bitRate = Int(level * 1000)
     }
 
     func changeAudioRate(level: CGFloat) {
@@ -230,13 +232,13 @@ final class ViewModel: ObservableObject {
     }
 }
 
-extension ViewModel: IORecorderDelegate {
-    // MARK: IORecorderDelegate
-    func recorder(_ recorder: IORecorder, errorOccured error: IORecorder.Error) {
+extension ViewModel: IOStreamRecorderDelegate {
+    // MARK: IOStreamRecorderDelegate
+    func recorder(_ recorder: IOStreamRecorder, errorOccured error: IOStreamRecorder.Error) {
         logger.error(error)
     }
 
-    func recorder(_ recorder: IORecorder, finishWriting writer: AVAssetWriter) {
+    func recorder(_ recorder: IOStreamRecorder, finishWriting writer: AVAssetWriter) {
         PHPhotoLibrary.shared().performChanges({() -> Void in
             PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: writer.outputURL)
         }, completionHandler: { _, error -> Void in
