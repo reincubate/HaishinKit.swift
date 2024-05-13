@@ -145,6 +145,7 @@ public final class IOVideoCaptureUnit: IOCaptureUnit {
                 device.activeVideoMinFrameDuration = CMTime(value: 100, timescale: CMTimeScale(100 * frameRate))
                 device.activeVideoMaxFrameDuration = CMTime(value: 100, timescale: CMTimeScale(100 * frameRate))
             } else {
+                #if os(iOS) || os(macOS)
                 if let format = device.videoFormat(
                     width: device.activeFormat.formatDescription.dimensions.width,
                     height: device.activeFormat.formatDescription.dimensions.height,
@@ -155,6 +156,7 @@ public final class IOVideoCaptureUnit: IOCaptureUnit {
                     device.activeVideoMinFrameDuration = CMTime(value: 100, timescale: CMTimeScale(100 * frameRate))
                     device.activeVideoMaxFrameDuration = CMTime(value: 100, timescale: CMTimeScale(100 * frameRate))
                 }
+                #endif
             }
             device.unlockForConfiguration()
         } catch {

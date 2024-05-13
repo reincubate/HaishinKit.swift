@@ -12,7 +12,6 @@ private typealias View = UIView
 /**
  * A view that displays a video content of a NetStream object which uses Metal api.
  */
-#if !os(visionOS)
 public class MTHKView: MTKView {
     /// Specifies how the video is displayed within a player layer’s bounds.
     public var videoGravity: AVLayerVideoGravity = .resizeAspect
