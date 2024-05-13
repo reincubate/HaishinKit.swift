@@ -15,12 +15,13 @@ final class AMF0SerializerTests: XCTestCase {
         "videoCodecs": Double(128),
         "videoFunction": Double(1),
         "capabilities": Double(239),
+        "fourCcList": ["av01", "vp09", "hvc1"],
         "pageUrl": nil,
         "objectEncoding": Double(0)
     ]
 
     func testConnectionChunk() {
-        var amf: AMFSerializer = AMF0Serializer()
+        var amf: any AMFSerializer = AMF0Serializer()
         amf.serialize(AMF0SerializerTests.connectionChunk)
         amf.position = 0
         let result: ASObject = try! amf.deserialize()
@@ -32,8 +33,7 @@ final class AMF0SerializerTests: XCTestCase {
             case "flashVer":
                 XCTAssertEqual(value as? String, "FMLE/3.0 (compatible; FMSc/1.0)")
             case "swfUrl":
-                //XCTAssertNil(value!)
-                break
+                XCTAssertNil(value)
             case "app":
                 XCTAssertEqual(value as? String, "live")
             case "fpad":
@@ -47,8 +47,9 @@ final class AMF0SerializerTests: XCTestCase {
             case "capabilities":
                 XCTAssertEqual(value as? Double, Double(239))
             case "pageUrl":
-                //XCTAssertNil(value!)
-                break
+                XCTAssertNil(value)
+            case "fourCcList":
+                XCTAssertEqual(value as? [String], ["av01", "vp09", "hvc1"])
             case "objectEncoding":
                 XCTAssertEqual(value as? Double, Double(0))
             default:
