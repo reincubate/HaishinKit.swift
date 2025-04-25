@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 @testable import HaishinKit
+import MoQTHaishinKit
 
 final class FLVAnalyzerViewController: NSViewController {
     @IBOutlet private weak var textView: NSTextView!
@@ -80,8 +81,8 @@ extension FLVAnalyzerViewController: NSTableViewDelegate {
             let amf = AMF0Serializer(data: data)
             let commandName = try? amf.deserialize()
             let name = try? amf.deserialize()
-            if let array: ASObject = try? amf.deserialize() {
-                textView.string = "\(String(describing: commandName)):\(String(describing: name)):\(array.description)"
+            if let array: AMFArray = try? amf.deserialize() {
+                textView.string = "\(String(describing: commandName)):\(String(describing: name)):\(array.debugDescription)"
             } else {
                 print("ERROR")
             }
@@ -93,7 +94,7 @@ extension FLVAnalyzerViewController: NSTableViewDelegate {
 
 extension FLVAnalyzerViewController: DnDDelegate {
     // MARK: DnDDelegate
-    func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+    nonisolated func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         return .copy
     }
 
