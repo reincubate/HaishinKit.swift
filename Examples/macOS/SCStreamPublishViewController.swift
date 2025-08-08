@@ -9,7 +9,7 @@ class SCStreamPublishViewController: NSViewController {
     @IBOutlet private weak var cameraPopUpButton: NSPopUpButton!
     @IBOutlet private weak var urlField: NSTextField!
     @IBOutlet private weak var mthkView: MTHKView!
-    private let netStreamSwitcher: HKStreamSwitcher = .init()
+    private var session: (any Session)?
     private let lockQueue = DispatchQueue(label: "SCStreamPublishViewController.lock")
     private var _scstream: Any?
 
@@ -20,15 +20,6 @@ class SCStreamPublishViewController: NSViewController {
         }
         set {
             _scstream = newValue
-            /*
-             Task {
-             try? newValue?.addStreamOutput(stream, type: .screen, sampleHandlerQueue: lockQueue)
-             if #available(macOS 13.0, *) {
-             try? newValue?.addStreamOutput(stream, type: .audio, sampleHandlerQueue: lockQueue)
-             }
-             try await newValue?.startCapture()
-             }
-             */
         }
     }
 
@@ -36,9 +27,11 @@ class SCStreamPublishViewController: NSViewController {
         super.viewDidLoad()
         urlField.stringValue = Preference.default.uri ?? ""
         Task {
-            await netStreamSwitcher.setPreference(Preference.default)
-            let stream = await netStreamSwitcher.stream
-            await stream?.addOutput(mthkView!)
+            session = try? await SessionBuilderFactory.shared.make(Preference.default.makeURL()).build()
+            guard let session else {
+                return
+            }
+            await session.stream.addOutput(mthkView!)
             try await SCShareableContent.current.windows.forEach {
                 cameraPopUpButton.addItem(withTitle: $0.owningApplication?.applicationName ?? "")
             }
@@ -50,11 +43,11 @@ class SCStreamPublishViewController: NSViewController {
             // Publish
             if sender.title == "Publish" {
                 sender.title = "Stop"
-                await netStreamSwitcher.open(.ingest)
+                try? await session?.connect(.ingest)
             } else {
                 // Stop
                 sender.title = "Publish"
-                await netStreamSwitcher.close()
+                try? await session?.connect(.ingest)
             }
         }
     }

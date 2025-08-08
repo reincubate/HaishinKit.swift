@@ -17,7 +17,7 @@ final class CameraIngestViewController: NSViewController {
     @IBOutlet private weak var audioPopUpButton: NSPopUpButton!
     @IBOutlet private weak var cameraPopUpButton: NSPopUpButton!
     @IBOutlet private weak var urlField: NSTextField!
-    private let netStreamSwitcher: HKStreamSwitcher = .init()
+    private var session: (any Session)?
     private var mixer = MediaMixer()
 
     @ScreenActor
@@ -33,12 +33,12 @@ final class CameraIngestViewController: NSViewController {
             var videoMixerSettings = await mixer.videoMixerSettings
             videoMixerSettings.mode = .offscreen
             await mixer.setVideoMixerSettings(videoMixerSettings)
-            await netStreamSwitcher.setPreference(Preference.default)
-            let stream = await netStreamSwitcher.stream
-            if let stream {
-                await stream.addOutput(lfView!)
-                await mixer.addOutput(stream)
+            session = try? await SessionBuilderFactory.shared.make(Preference.default.makeURL()).build()
+            guard let session else {
+                return
             }
+            await session.stream.addOutput(lfView!)
+            await mixer.addOutput(session.stream)
         }
     }
 
@@ -103,11 +103,11 @@ final class CameraIngestViewController: NSViewController {
             // Publish
             if sender.title == "Publish" {
                 sender.title = "Stop"
-                await netStreamSwitcher.open(.ingest)
+                try? await session?.connect(.ingest)
             } else {
                 // Stop
                 sender.title = "Publish"
-                await netStreamSwitcher.close()
+                try? await session?.close()
             }
         }
     }

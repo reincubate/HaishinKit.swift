@@ -10,6 +10,9 @@
 * README.md contains unreleased content, which can be tested on the main branch.
 * [API Documentation](https://docs.haishinkit.com/swift/latest/documentation/)
 
+## 🎖️ 10th Anniversary
+In development for 10 years, with 2,778 commits and 163 releases. Thank you. Since Aug 2, 2015.
+
 ## 💖 Sponsors
 Do you need additional support? Technical support on Issues and Discussions is provided only to contributors and academic researchers of HaishinKit. By becoming a sponsor, we can provide the support you need.
 
@@ -28,7 +31,7 @@ Project name    |Notes       |License
 [HaishinKit for Flutter.](https://github.com/HaishinKit/HaishinKit.dart)|Camera and Microphone streaming library via RTMP for Flutter.|[BSD 3-Clause "New" or "Revised" License](https://github.com/HaishinKit/HaishinKit.dart/blob/master/LICENSE.md)
 
 ## 🎨 Features
-### ✏️ [RTMP](HaishinKit/Sources/Docs.docc/index.md)
+### ✏️ [RTMP](RTMPHaishinKit/Sources/Docs.docc/index.md)
 - [x] FMLE-compatible Authentication
 - [x] Ingest
   - H264, HEVC, AAC and OPUS support.
@@ -125,19 +128,13 @@ open Examples/Examples.xcodeproj
 |SRTHaishinKit|13.0+|13.0+|10.15+|1.0+|-|
 
 ### Cocoa Keys
-Please contains Info.plist.
-
-**iOS 10.0+**
-* NSMicrophoneUsageDescription
-* NSCameraUsageDescription
-
-**macOS 10.14+**
-* NSMicrophoneUsageDescription
-* NSCameraUsageDescription
-
-**tvOS 17.0+**
-* NSMicrophoneUsageDescription
-* NSCameraUsageDescription
+Please make sure to contains `Info.plist` the following values when accessing the camera or microphone.
+```xml
+<key>NSCameraUsageDescription</key>
+<string>your usage description here</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>your usage description here</string>
+```
 
 ## 🔧 Installation
 * Using Swift Package Manager
@@ -146,6 +143,10 @@ Please contains Info.plist.
 * [Discontinued support for Carthage.](https://github.com/HaishinKit/HaishinKit.swift/pull/1543)
 
 ## 📓 Settings
+> [!IMPORTANT]
+> Some debug features may be incompatible and could cause crashes. Please read the following issue and turn them off.
+> https://github.com/HaishinKit/HaishinKit.swift/issues/1722
+
 ### 🔧 Prerequisites
 Make sure you setup and activate your AVAudioSession iOS.
 ```swift
